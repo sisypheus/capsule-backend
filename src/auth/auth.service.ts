@@ -2,6 +2,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Database } from 'database.types';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -14,7 +15,7 @@ export class AuthService implements OnModuleInit {
     const supabaseKey = this.configService.get<string>(
       'SUPABASE_SERVICE_ROLE_KEY'
     );
-    this.supabase = createClient(supabaseUrl!, supabaseKey!, {
+    this.supabase = createClient<Database>(supabaseUrl!, supabaseKey!, {
       auth: {
         flowType: 'pkce'
       }
