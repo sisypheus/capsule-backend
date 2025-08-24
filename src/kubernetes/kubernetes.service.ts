@@ -28,7 +28,7 @@ export class KubernetesService {
     this.logger.log(`Début du déploiement dans le namespace: ${namespace}`);
 
     try {
-      // 1. Create Namespace
+      // 1. Namespace
       this.logger.log(`Création du namespace...`);
       await this.k8sCoreApi.createNamespace({
         body: {
@@ -38,20 +38,19 @@ export class KubernetesService {
         }
       });
 
-      // 2. Create Deployment
+      // 2. Deployment
       const deploymentManifest = this.createDeploymentManifest(
         appName,
         imageName,
         namespace
       );
       this.logger.log(`Création du déploiement...`);
-      // <- pass request object with namespace + body
       await this.k8sAppsApi.createNamespacedDeployment({
         namespace,
         body: deploymentManifest
       });
 
-      // 3. Create Service
+      // 3. Service
       const serviceManifest = this.createServiceManifest(appName, namespace);
       this.logger.log(`Création du service...`);
       await this.k8sCoreApi.createNamespacedService({
@@ -59,7 +58,7 @@ export class KubernetesService {
         body: serviceManifest
       });
 
-      // 4. Create Ingress
+      // 4. Ingress
       const { ingressManifest, ingressUrl } = this.createIngressManifest(
         appName,
         namespace

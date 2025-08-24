@@ -5,14 +5,20 @@ import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { DeploymentsModule } from './deployments/deployments.module';
 import { KubernetesModule } from './kubernetes/kubernetes.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { LifecycleModule } from './lifecycle/lifecycle.module';
+import { SupabaseModule } from './supabase/supabase.module';
 
 @Module({
   imports: [
     AppModule,
     AuthModule,
     ConfigModule.forRoot(),
+    ScheduleModule.forRoot(),
     DeploymentsModule,
-    KubernetesModule
+    KubernetesModule,
+    LifecycleModule,
+    SupabaseModule
   ],
   controllers: [AppController],
   providers: [AppService]

@@ -6,25 +6,24 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import { PostgrestError, User } from '@supabase/supabase-js';
-import { AuthService } from 'src/auth/auth.service';
 import { KubernetesService } from 'src/kubernetes/kubernetes.service';
+import { Supabase } from 'src/supabase/supabase.service';
 
 @Injectable()
 export class DeploymentsService {
   constructor(
-    private readonly authService: AuthService,
+    private readonly db: Supabase,
     private readonly kubernetesService: KubernetesService
   ) {}
 
   async create(user: User, imageName: string): Promise<any> {
-    const supabase = this.authService.getSupabaseClient();
-
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await this.db
       .from('deployments')
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
       .in('status', ['active', 'provisioning']);
 
+    console.log('ere');
     if (countError || count === null) {
       throw countError!;
     }
@@ -34,11 +33,12 @@ export class DeploymentsService {
       );
     }
 
+    console.log('ere');
     const {
       data,
       error
     }: { data: Tables<'deployments'> | null; error: PostgrestError | null } =
-      await supabase
+      await this.db
         .from('deployments')
         .insert({
           user_id: user.id,
@@ -48,24 +48,27 @@ export class DeploymentsService {
         .select()
         .single();
 
+    console.log(error);
+    console.log(data);
     if (error || !data) {
       throw NotFoundException;
     }
 
     try {
-      const { ingressUrl } =
+      const { ingressUrl, namespace } =
         await this.kubernetesService.deployApplication(imageName);
 
-      return await supabase
+      return await this.db
         .from('deployments')
         .update({
           url: ingressUrl,
-          status: 'active'
+          status: 'active',
+          namespace
         })
         .eq('id', data.id)
         .select();
     } catch (error) {
-      await supabase
+      await this.db
         .from('deployments')
         .update({
           status: 'failed'
@@ -77,8 +80,7 @@ export class DeploymentsService {
   }
 
   async findForUser(user: User): Promise<any> {
-    const supabase = this.authService.getSupabaseClient();
-    const { data, error } = await supabase
+    const { data, error } = await this.db
       .from('deployments')
       .select('*')
       .eq('user_id', user.id)

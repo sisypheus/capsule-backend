@@ -4,22 +4,25 @@ import {
   Query,
   Req,
   Res,
-  UnauthorizedException
+  UnauthorizedException,
+  UseGuards
 } from '@nestjs/common';
 import type { Response } from 'express';
 import type { Request } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
-// import { UseGuards } from '@nestjs/common';
+import { Supabase } from 'src/supabase/supabase.service';
+import { AuthGuard } from './auth.guard';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly db: Supabase
   ) {}
 
-  //@UseGuards(AuthGuard)
+  @UseGuards(AuthGuard)
   @Get('me')
   async getMe(@Req() req: Request) {
     const at = req.cookies['access_token'];
@@ -28,18 +31,15 @@ export class AuthController {
       throw new UnauthorizedException();
     }
 
-    const supabase = this.authService.getSupabaseClient();
-
     const {
       data: { user }
-    } = await supabase.auth.getUser(at);
+    } = await this.db.auth.getUser(at);
     return user;
   }
 
   @Get('github/login')
   async githubLogin(@Res() res: Response) {
-    const supabase = this.authService.getSupabaseClient();
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await this.db.auth.signInWithOAuth({
       provider: 'github',
       options: {
         redirectTo: 'http://localhost:3000/auth/github/callback' // Doit correspondre à la config Supabase
@@ -59,8 +59,7 @@ export class AuthController {
       return res.status(400).send('No code provided');
     }
 
-    const supabase = this.authService.getSupabaseClient();
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await this.db.auth.exchangeCodeForSession(code);
 
     if (error) {
       return res.status(500).send('Error exchanging code for session');
