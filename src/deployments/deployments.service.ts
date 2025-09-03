@@ -23,7 +23,6 @@ export class DeploymentsService {
       .eq('user_id', user.id)
       .in('status', ['active', 'provisioning']);
 
-    console.log('ere');
     if (countError || count === null) {
       throw countError!;
     }
@@ -33,7 +32,6 @@ export class DeploymentsService {
       );
     }
 
-    console.log('ere');
     const {
       data,
       error

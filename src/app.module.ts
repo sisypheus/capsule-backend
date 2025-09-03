@@ -8,6 +8,7 @@ import { KubernetesModule } from './kubernetes/kubernetes.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { SupabaseModule } from './supabase/supabase.module';
+import { CryptoModule } from './crypto/crypto.module';
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { SupabaseModule } from './supabase/supabase.module';
     DeploymentsModule,
     KubernetesModule,
     LifecycleModule,
-    SupabaseModule
+    SupabaseModule,
+    CryptoModule
   ],
   controllers: [AppController],
   providers: [AppService]

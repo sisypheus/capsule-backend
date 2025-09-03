@@ -28,7 +28,7 @@ export class KubernetesService {
     this.logger.log(`Début du déploiement dans le namespace: ${namespace}`);
 
     try {
-      // 1. Namespace
+      console.log(namespace);
       this.logger.log(`Création du namespace...`);
       await this.k8sCoreApi.createNamespace({
         body: {
@@ -38,7 +38,6 @@ export class KubernetesService {
         }
       });
 
-      // 2. Deployment
       const deploymentManifest = this.createDeploymentManifest(
         appName,
         imageName,
@@ -50,7 +49,6 @@ export class KubernetesService {
         body: deploymentManifest
       });
 
-      // 3. Service
       const serviceManifest = this.createServiceManifest(appName, namespace);
       this.logger.log(`Création du service...`);
       await this.k8sCoreApi.createNamespacedService({
@@ -58,7 +56,6 @@ export class KubernetesService {
         body: serviceManifest
       });
 
-      // 4. Ingress
       const { ingressManifest, ingressUrl } = this.createIngressManifest(
         appName,
         namespace
@@ -166,6 +163,7 @@ export class KubernetesService {
 
   async cleanupNamespace(namespace: string) {
     try {
+      // await this.k8sCoreApi.deleteNamespace({ name: namespace });
       await this.k8sCoreApi.deleteNamespace({ name: namespace });
       this.logger.log(`Namespace ${namespace} nettoyé avec succès.`);
     } catch (err: any) {

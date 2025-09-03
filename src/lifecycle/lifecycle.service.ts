@@ -23,7 +23,7 @@ export class LifecycleService {
     );
   }
 
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  @Cron(CronExpression.EVERY_MINUTE)
   async handleCron() {
     this.logger.log(
       'Exécution de la tâche de nettoyage des déploiements expirés...'
