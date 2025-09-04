@@ -31,7 +31,7 @@ export class AuthService {
     const { data, error } = await this.db.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: 'http://localhost:3000/auth/github/callback', // Doit correspondre à la config Supabase
+        redirectTo: process.env.GITHUB_CALLBACK, // 'http://localhost:3000/auth/github/callback', // Doit correspondre à la config Supabase
         scopes: 'read:user repo'
       }
     });

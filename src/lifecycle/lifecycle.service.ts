@@ -23,12 +23,8 @@ export class LifecycleService {
     );
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_5_MINUTES)
   async handleCron() {
-    this.logger.log(
-      'Exécution de la tâche de nettoyage des déploiements expirés...'
-    );
-
     const { data: activeDeployments, error } = await this.db
       .from('deployments')
       .select('*')
@@ -42,10 +38,7 @@ export class LifecycleService {
       return;
     }
 
-    if (!activeDeployments || activeDeployments.length === 0) {
-      this.logger.log('Aucun déploiement actif à vérifier. Tâche terminée.');
-      return;
-    }
+    if (!activeDeployments || activeDeployments.length === 0) return;
 
     const now = new Date();
     const expiredDeployments = activeDeployments.filter((dep) => {
@@ -55,10 +48,7 @@ export class LifecycleService {
       return minutesSinceCreation > this.deploymentTtlMinutes;
     });
 
-    if (expiredDeployments.length === 0) {
-      this.logger.log('Aucun déploiement expiré trouvé. Tâche terminée.');
-      return;
-    }
+    if (expiredDeployments.length === 0) return;
 
     this.logger.log(
       `${expiredDeployments.length} déploiement(s) expiré(s) trouvé(s). Début du nettoyage...`
