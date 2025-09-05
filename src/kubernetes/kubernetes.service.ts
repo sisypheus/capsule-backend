@@ -28,7 +28,6 @@ export class KubernetesService {
     this.logger.log(`Début du déploiement dans le namespace: ${namespace}`);
 
     try {
-      console.log(namespace);
       this.logger.log(`Création du namespace...`);
       await this.k8sCoreApi.createNamespace({
         body: {

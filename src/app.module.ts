@@ -9,6 +9,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { CryptoModule } from './crypto/crypto.module';
+import { GithubModule } from './github/github.module';
+import { StateModule } from './state/state.module';
 
 @Module({
   imports: [
@@ -20,7 +22,9 @@ import { CryptoModule } from './crypto/crypto.module';
     KubernetesModule,
     LifecycleModule,
     SupabaseModule,
-    CryptoModule
+    CryptoModule,
+    GithubModule,
+    StateModule
   ],
   controllers: [AppController],
   providers: [AppService]

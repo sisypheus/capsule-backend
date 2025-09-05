@@ -31,8 +31,7 @@ export class AuthService {
     const { data, error } = await this.db.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: process.env.GITHUB_CALLBACK, // 'http://localhost:3000/auth/github/callback', // Doit correspondre à la config Supabase
-        scopes: 'read:user repo'
+        redirectTo: process.env.GITHUB_CALLBACK
       }
     });
 
@@ -54,29 +53,6 @@ export class AuthService {
       return res.status(500).send('Error exchanging code for session');
     }
 
-    const providerToken = data.session.provider_token;
-
-    if (!providerToken) {
-      console.error(
-        `Aucun provider token trouvé pour l'utilisateur ${data.user.id}.`
-      );
-    }
-
-    const encryptedToken = this.cryptoService.encrypt(providerToken!);
-
-    const { error: upsertError } = await this.db.from('profiles').upsert({
-      id: data.user.id,
-      github_provider_token: encryptedToken,
-      updated_at: new Date().toISOString()
-    });
-
-    if (upsertError) {
-      console.error(
-        `Échec de la sauvegarde du token chiffré pour l'utilisateur ${data.user.id}`,
-        upsertError.message
-      );
-    }
-
     res.cookie('access_token', data.session.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV !== 'development',
@@ -91,6 +67,39 @@ export class AuthService {
     });
 
     const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    res.redirect(`${frontendUrl}/dashboard`);
+  }
+
+  githubAppLogin(res: Response) {
+    const appName = 'capsule-paas';
+    const installUrl = `https://github.com/apps/${appName}/installations/new`;
+    res.redirect(installUrl);
+  }
+
+  async githubAppCallback(
+    installationId: number,
+    setupAction: string,
+    res: Response,
+    req: Request
+  ) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+    const at: string = req.cookies['access_token'];
+
+    const {
+      data: { user }
+    } = await this.db.auth.getUser(at);
+
+    if (!user) throw new UnauthorizedException('User not logged in');
+
+    this.db
+      .from('profile')
+      .insert({
+        id: user.id,
+        github_installation_id: installationId
+      })
+      .select()
+      .single();
+
     res.redirect(`${frontendUrl}/dashboard`);
   }
 }

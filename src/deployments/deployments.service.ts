@@ -46,8 +46,6 @@ export class DeploymentsService {
         .select()
         .single();
 
-    console.log(error);
-    console.log(data);
     if (error || !data) {
       throw NotFoundException;
     }
