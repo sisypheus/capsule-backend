@@ -5,7 +5,8 @@ import {
   Body,
   UseGuards,
   Req,
-  ValidationPipe
+  ValidationPipe,
+  Query
 } from '@nestjs/common';
 import { AuthGuard } from 'src/auth/auth.guard';
 import type { Request } from 'express';
@@ -19,9 +20,13 @@ export class DeploymentsController {
   constructor(private readonly deploymentsService: DeploymentsService) {}
 
   @Get()
-  findAll(@Req() req: Request) {
+  findAll(
+    @Req() req: Request,
+    @Query('page') page: number,
+    @Query('per_page') perPage: number
+  ) {
     const user = req['user'] as User;
-    return this.deploymentsService.findForUser(user);
+    return this.deploymentsService.findForUser(user, page, perPage);
   }
 
   @Post()
