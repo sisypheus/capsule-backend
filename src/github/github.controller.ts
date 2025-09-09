@@ -24,10 +24,14 @@ export class GithubController {
 
   @UseGuards(AuthGuard)
   @Get('/repos')
-  findAll(@Req() req: Request) {
+  findAll(
+    @Req() req: Request,
+    @Query('page') page: number,
+    @Query('per_page') per_page: number
+  ) {
     const user = req['user'] as User;
 
-    return this.githubService.getRepositoriesForUser(user.id);
+    return this.githubService.getRepositoriesForUser(user.id, page, per_page);
   }
 
   @Get('install')

@@ -50,7 +50,10 @@ export class GithubService {
     });
   }
 
-  async getRepositoriesForUser(userId: string) {
+  async getRepositoriesForUser(userId: string, page = 1, perPage = 30) {
+    page = Number(page) || 1;
+    perPage = Number(perPage) || 30;
+
     const { data: profile } = await this.db
       .from('profiles')
       .select('github_installation_id')
@@ -67,10 +70,16 @@ export class GithubService {
     const octokit = await this.getInstallationOctokit(num);
 
     const { data: repos } =
-      await octokit.apps.listReposAccessibleToInstallation();
+      await octokit.apps.listReposAccessibleToInstallation({
+        per_page: perPage,
+        page
+      });
 
-    return repos.repositories.map((repo) => ({
+    return (repos.repositories || []).map((repo) => ({
       id: repo.id,
+      description: repo.description,
+      updated_at: repo.updated_at,
+      icon: repo.owner.avatar_url,
       name: repo.name,
       fullName: repo.full_name,
       private: repo.private

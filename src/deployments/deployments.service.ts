@@ -75,14 +75,22 @@ export class DeploymentsService {
     }
   }
 
-  async findForUser(user: User): Promise<any> {
+  async findForUser(user: User, page = 1, perPage = 10): Promise<any> {
+    page = Math.max(1, Number(page) || 1);
+    perPage = Math.min(Math.max(Number(perPage) || 10, 1), 100);
+
+    const from = (page - 1) * perPage;
+    const to = from + perPage - 1;
+
     const { data, error } = await this.db
       .from('deployments')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (error) throw error;
+
     return data;
   }
 }
