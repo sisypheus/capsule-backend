@@ -1,3 +1,4 @@
+import { CreateDeploymentDto } from './dto/create-deployment.dto';
 import { Tables } from 'database.types';
 import {
   ForbiddenException,
@@ -16,7 +17,7 @@ export class DeploymentsService {
     private readonly kubernetesService: KubernetesService
   ) {}
 
-  async create(user: User, imageName: string): Promise<any> {
+  async create(user: User, deploymentDto: CreateDeploymentDto): Promise<any> {
     const { count, error: countError } = await this.db
       .from('deployments')
       .select('*', { count: 'exact' })
@@ -40,19 +41,26 @@ export class DeploymentsService {
         .from('deployments')
         .insert({
           user_id: user.id,
-          image_name: imageName,
-          status: 'provisioning'
+          status: 'provisioning',
+          branch: deploymentDto.branch,
+          project: deploymentDto.project,
+          project_name: deploymentDto.project_name,
+          dockerfile_path: deploymentDto.dockerfile_path
         })
         .select()
         .single();
 
     if (error || !data) {
+      console.log(data);
+      console.log(error);
       throw NotFoundException;
     }
 
     try {
-      const { ingressUrl, namespace } =
-        await this.kubernetesService.deployApplication(imageName);
+      const namespace = 'random';
+      const ingressUrl = 'random';
+      // const { ingressUrl, namespace } =
+      // await this.kubernetesService.deployApplication();
 
       return await this.db
         .from('deployments')

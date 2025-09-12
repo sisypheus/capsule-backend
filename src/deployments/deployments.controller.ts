@@ -35,6 +35,6 @@ export class DeploymentsController {
     @Body(new ValidationPipe()) createDeploymentDto: CreateDeploymentDto
   ) {
     const user = req['user'] as User;
-    return this.deploymentsService.create(user, createDeploymentDto.imageName);
+    return this.deploymentsService.create(user, createDeploymentDto);
   }
 }
