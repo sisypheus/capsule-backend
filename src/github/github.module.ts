@@ -8,6 +8,7 @@ import { StateModule } from 'src/state/state.module';
 @Module({
   imports: [ConfigModule, AuthModule, StateModule],
   providers: [GithubService],
-  controllers: [GithubController]
+  controllers: [GithubController],
+  exports: [GithubService]
 })
 export class GithubModule {}

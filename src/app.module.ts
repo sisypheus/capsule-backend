@@ -11,9 +11,14 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { GithubModule } from './github/github.module';
 import { StateModule } from './state/state.module';
+import { BullModule } from '@nestjs/bullmq';
+import { BuildModule } from './build/build.module';
 
 @Module({
   imports: [
+    BullModule.forRoot({
+      connection: { host: 'localhost', port: 6379 }
+    }),
     AppModule,
     AuthModule,
     ConfigModule.forRoot(),
@@ -24,7 +29,8 @@ import { StateModule } from './state/state.module';
     SupabaseModule,
     CryptoModule,
     GithubModule,
-    StateModule
+    StateModule,
+    BuildModule
   ],
   controllers: [AppController],
   providers: [AppService]

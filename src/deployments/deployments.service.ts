@@ -9,12 +9,14 @@ import {
 import { PostgrestError, User } from '@supabase/supabase-js';
 import { KubernetesService } from 'src/kubernetes/kubernetes.service';
 import { Supabase } from 'src/supabase/supabase.service';
+import { BuildService } from 'src/build/build.service';
 
 @Injectable()
 export class DeploymentsService {
   constructor(
     private readonly db: Supabase,
-    private readonly kubernetesService: KubernetesService
+    private readonly kubernetesService: KubernetesService,
+    private readonly buildService: BuildService
   ) {}
 
   async create(user: User, deploymentDto: CreateDeploymentDto): Promise<any> {
@@ -57,24 +59,30 @@ export class DeploymentsService {
     }
 
     try {
-      const namespace = 'random';
-      const ingressUrl = 'random';
-      // const { ingressUrl, namespace } =
-      // await this.kubernetesService.deployApplication();
+      const build = await this.buildService.createBuildJob(
+        user.id,
+        deploymentDto.project,
+        deploymentDto.branch || 'main'
+      );
+      console.log(build);
+      // const namespace = 'random';
+      // const ingressUrl = 'random';
+      // // const { ingressUrl, namespace } =
+      // // await this.kubernetesService.deployApplication();
 
-      return await this.db
-        .from('deployments')
-        .update({
-          url: ingressUrl,
-          status: 'active',
-          namespace
-        })
-        .eq('id', data.id)
-        .select();
+      // return await this.db
+      //   .from('deployments')
+      //   .update({
+      //     url: ingressUrl,
+      //     status: 'active',
+      //     namespace
+      //   })
+      //   .eq('id', data.id)
+      //   .select();
     } catch (error) {
       await this.db
         .from('deployments')
-        .update({
+        .upsert({
           status: 'failed'
         })
         .eq('id', data.id)

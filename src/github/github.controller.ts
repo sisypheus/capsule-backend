@@ -26,12 +26,13 @@ export class GithubController {
   @Get('/repos')
   findAll(
     @Req() req: Request,
+    @Query('search') search: string,
     @Query('page') page: number,
     @Query('per_page') per_page: number
   ) {
     const user = req['user'] as User;
 
-    return this.githubService.getRepositoriesForUser(user.id, page, per_page);
+    return this.githubService.getRepositoriesForUser(user.id, page, per_page, search);
   }
 
   @Get('install')
