@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { User } from '@supabase/supabase-js';
 import { DeploymentsService } from './deployments.service';
 import { CreateDeploymentDto } from './dto/create-deployment.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @UseGuards(AuthGuard)
 @Controller('deployments')
@@ -29,6 +30,12 @@ export class DeploymentsController {
     return this.deploymentsService.findForUser(user, page, perPage);
   }
 
+  @Throttle({
+    default: {
+      limit: 1,
+      ttl: 10000
+    }
+  })
   @Post()
   create(
     @Req() req: Request,

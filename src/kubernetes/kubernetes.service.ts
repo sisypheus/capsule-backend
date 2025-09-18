@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as k8s from '@kubernetes/client-node';
-import * as short from 'short-uuid';
 
 @Injectable()
 export class KubernetesService {
@@ -12,82 +11,88 @@ export class KubernetesService {
 
   constructor() {
     this.kc = new k8s.KubeConfig();
-    this.kc.loadFromDefault();
+    if (process.env.KUBERNETES_SERVICE_HOST) this.kc.loadFromCluster();
+    else this.kc.loadFromDefault();
 
     this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.k8sAppsApi = this.kc.makeApiClient(k8s.AppsV1Api);
     this.k8sNetworkingApi = this.kc.makeApiClient(k8s.NetworkingV1Api);
   }
 
-  async deployApplication(
-    imageName: string
-  ): Promise<{ namespace: string; ingressUrl: string }> {
-    const namespace = `paas-${short.generate()}`.toLowerCase();
-    const appName = 'app';
-
-    this.logger.log(`Début du déploiement dans le namespace: ${namespace}`);
+  private async applyResource<T extends k8s.KubernetesObject>(
+    manifest: T,
+    readCall: () => Promise<any>,
+    createCall: (manifest: T) => Promise<any>,
+    replaceCall: (manifest: T) => Promise<any>
+  ) {
+    const name = manifest.metadata?.name;
+    const kind = manifest.kind;
 
     try {
-      this.logger.log(`Création du namespace...`);
-      await this.k8sCoreApi.createNamespace({
-        body: {
-          apiVersion: 'v1',
-          kind: 'Namespace',
-          metadata: { name: namespace }
-        }
-      });
-
-      const deploymentManifest = this.createDeploymentManifest(
-        appName,
-        imageName,
-        namespace
-      );
-      this.logger.log(`Création du déploiement...`);
-      await this.k8sAppsApi.createNamespacedDeployment({
-        namespace,
-        body: deploymentManifest
-      });
-
-      const serviceManifest = this.createServiceManifest(appName, namespace);
-      this.logger.log(`Création du service...`);
-      await this.k8sCoreApi.createNamespacedService({
-        namespace,
-        body: serviceManifest
-      });
-
-      const { ingressManifest, ingressUrl } = this.createIngressManifest(
-        appName,
-        namespace
-      );
-      this.logger.log(`Création de l'ingress sur l'URL: ${ingressUrl}`);
-      await this.k8sNetworkingApi.createNamespacedIngress({
-        namespace,
-        body: ingressManifest
-      });
-
-      this.logger.log(`Déploiement réussi pour le namespace ${namespace}`);
-      return { namespace, ingressUrl };
-    } catch (err: any) {
-      this.logger.error(
-        `Échec du déploiement pour ${namespace}. Tentative de nettoyage...`,
-        err?.stack ?? err
-      );
-      await this.cleanupNamespace(namespace);
-      throw new Error(
-        `Kubernetes deployment failed: ${err?.body?.message ?? err?.message ?? String(err)}`
-      );
+      await readCall();
+      this.logger.log(`${kind} '${name}' already exists. Replacing...`);
+      await replaceCall(manifest);
+      this.logger.log(`${kind} '${name}' replaced successfully.`);
+    } catch (e) {
+      if (this.isNotFoundError(e)) {
+        this.logger.log(`${kind} '${name}' not found. Creating...`);
+        await createCall(manifest);
+        this.logger.log(`${kind} '${name}' created successfully.`);
+      } else {
+        this.logger.error(
+          `Failed to apply ${kind} '${name}':`,
+          e.body || e.message
+        );
+        throw e;
+      }
     }
   }
 
-  private createDeploymentManifest(
-    appName: string,
-    imageName: string,
-    namespace: string
-  ): k8s.V1Deployment {
-    return {
+  private isNotFoundError(e: any): boolean {
+    if (e?.body?.code === 404) {
+      return true;
+    }
+
+    if (typeof e?.body === 'string') {
+      try {
+        const errorBody = JSON.parse(e.body);
+        if (errorBody.code === 404) {
+          return true;
+        }
+      } catch {
+        return false;
+      }
+    }
+
+    if (e?.response?.statusCode === 404) {
+      return true;
+    }
+
+    return false;
+  }
+
+  async applyNamespace(name: string) {
+    this.logger.log(`Applying Namespace: ${name}`);
+    const manifest: k8s.V1Namespace = {
+      apiVersion: 'v1',
+      kind: 'Namespace',
+      metadata: { name }
+    };
+
+    await this.applyResource(
+      manifest,
+      () => this.k8sCoreApi.readNamespace({ name }),
+      (m) => this.k8sCoreApi.createNamespace({ body: m }),
+      (m) => this.k8sCoreApi.replaceNamespace({ name, body: m })
+    );
+  }
+
+  async applyDeployment(namespace: string, appName: string, imageUri: string) {
+    this.logger.log(`Applying Deployment: ${appName} in ${namespace}`);
+    const manifest: k8s.V1Deployment = {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
-      metadata: { name: appName, namespace },
+      metadata: { name: appName },
       spec: {
         replicas: 1,
         selector: { matchLabels: { app: appName } },
@@ -95,74 +100,158 @@ export class KubernetesService {
           metadata: { labels: { app: appName } },
           spec: {
             containers: [
-              {
-                name: appName,
-                image: imageName,
-                ports: [{ containerPort: 80 }]
-              }
+              { name: appName, image: imageUri, ports: [{ containerPort: 80 }] }
             ]
           }
         }
       }
-    } as k8s.V1Deployment;
+    };
+
+    await this.applyResource(
+      manifest,
+      () =>
+        this.k8sAppsApi.readNamespacedDeployment({
+          name: appName,
+          namespace: namespace
+        }),
+      (m) => this.k8sAppsApi.createNamespacedDeployment({ namespace, body: m }),
+      (m) =>
+        this.k8sAppsApi.replaceNamespacedDeployment({
+          name: appName,
+          namespace,
+          body: m
+        })
+    );
   }
 
-  private createServiceManifest(
-    appName: string,
-    namespace: string
-  ): k8s.V1Service {
-    return {
+  async applyService(namespace: string, appName: string) {
+    this.logger.log(`Applying Service: ${appName} in ${namespace}`);
+    const manifest: k8s.V1Service = {
       apiVersion: 'v1',
       kind: 'Service',
-      metadata: { name: appName, namespace },
+      metadata: { name: appName },
       spec: {
         selector: { app: appName },
         ports: [{ port: 80, targetPort: 80 }],
         type: 'ClusterIP'
       }
-    } as k8s.V1Service;
+    };
+
+    await this.applyResource(
+      manifest,
+      () => this.k8sCoreApi.readNamespacedService({ name: appName, namespace }),
+      (m) => this.k8sCoreApi.createNamespacedService({ namespace, body: m }),
+      (m) =>
+        this.k8sCoreApi.replaceNamespacedService({
+          name: appName,
+          namespace,
+          body: m
+        })
+    );
   }
 
-  private createIngressManifest(
-    appName: string,
-    namespace: string
-  ): { ingressManifest: k8s.V1Ingress; ingressUrl: string } {
-    const host = `${namespace}.127.0.0.1.nip.io`;
-    const ingressUrl = `http://${host}:8081`;
-
-    const ingressManifest: k8s.V1Ingress = {
+  async applyIngress(namespace: string, appName: string, url: string) {
+    this.logger.log(`Applying Ingress: ${appName} in ${namespace}`);
+    const host = new URL(url).hostname;
+    const manifest: k8s.V1Ingress = {
       apiVersion: 'networking.k8s.io/v1',
       kind: 'Ingress',
-      metadata: { name: appName, namespace },
+      metadata: {
+        name: appName,
+        annotations: { 'kubernetes.io/ingress.class': 'traefik' }
+      },
       spec: {
         rules: [
           {
-            host: host,
+            host,
             http: {
               paths: [
                 {
                   path: '/',
                   pathType: 'Prefix',
-                  backend: {
-                    service: {
-                      name: appName,
-                      port: { number: 80 }
-                    }
-                  }
+                  backend: { service: { name: appName, port: { number: 80 } } }
                 }
               ]
             }
           }
         ]
       }
-    } as k8s.V1Ingress;
+    };
 
-    return { ingressManifest, ingressUrl };
+    await this.applyResource(
+      manifest,
+      () =>
+        this.k8sNetworkingApi.readNamespacedIngress({
+          name: appName,
+          namespace
+        }),
+      (m) =>
+        this.k8sNetworkingApi.createNamespacedIngress({ namespace, body: m }),
+      (m) =>
+        this.k8sNetworkingApi.replaceNamespacedIngress({
+          name: appName,
+          namespace,
+          body: m
+        })
+    );
+  }
+
+  async waitForDeployment(
+    namespace: string,
+    appName: string,
+    timeout = 300000 // 5 minutes
+  ): Promise<any> {
+    this.logger.log(
+      `Waiting for deployment ${appName} in namespace ${namespace} to be ready...`
+    );
+
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+
+      const interval = setInterval(async () => {
+        if (Date.now() - startTime > timeout) {
+          clearInterval(interval);
+          reject(
+            new Error(`Timeout waiting for deployment rollout for ${appName}.`)
+          );
+          return;
+        }
+
+        try {
+          const deployment = await this.k8sAppsApi.readNamespacedDeployment({
+            name: appName,
+            namespace
+          });
+          const status = deployment.status;
+
+          if (
+            status &&
+            status.updatedReplicas === deployment.spec?.replicas &&
+            status.replicas === status.updatedReplicas &&
+            status.availableReplicas === status.replicas
+          ) {
+            clearInterval(interval);
+            this.logger.log(`Deployment ${appName} is ready.`);
+            resolve('');
+          } else {
+            this.logger.log(
+              `[${appName}] Waiting... Replicas: ${status?.availableReplicas || 0}/${deployment.spec?.replicas}`
+            );
+          }
+        } catch (error: any) {
+          clearInterval(interval);
+          this.logger.error(
+            `Error while waiting for deployment ${appName}:`,
+            error.body || error
+          );
+          reject(new Error(error));
+        }
+      }, 5000);
+    });
   }
 
   async cleanupNamespace(namespace: string) {
     try {
-      // await this.k8sCoreApi.deleteNamespace({ name: namespace });
       await this.k8sCoreApi.deleteNamespace({ name: namespace });
       this.logger.log(`Namespace ${namespace} nettoyé avec succès.`);
     } catch (err: any) {

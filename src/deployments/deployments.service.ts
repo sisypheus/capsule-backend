@@ -9,14 +9,18 @@ import {
 import { PostgrestError, User } from '@supabase/supabase-js';
 import { KubernetesService } from 'src/kubernetes/kubernetes.service';
 import { Supabase } from 'src/supabase/supabase.service';
-import { BuildService } from 'src/build/build.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { GithubService } from 'src/github/github.service';
+import { BUILD_QUEUE_NAME } from 'src/queue/queue.module';
 
 @Injectable()
 export class DeploymentsService {
   constructor(
     private readonly db: Supabase,
     private readonly kubernetesService: KubernetesService,
-    private readonly buildService: BuildService
+    @InjectQueue(BUILD_QUEUE_NAME) private readonly buildQueue: Queue,
+    private readonly githubService: GithubService
   ) {}
 
   async create(user: User, deploymentDto: CreateDeploymentDto): Promise<any> {
@@ -36,7 +40,7 @@ export class DeploymentsService {
     }
 
     const {
-      data,
+      data: deployment,
       error
     }: { data: Tables<'deployments'> | null; error: PostgrestError | null } =
       await this.db
@@ -52,40 +56,51 @@ export class DeploymentsService {
         .select()
         .single();
 
-    if (error || !data) {
-      console.log(data);
-      console.log(error);
+    if (error || !deployment) {
       throw NotFoundException;
     }
 
     try {
-      const build = await this.buildService.createBuildJob(
-        user.id,
-        deploymentDto.project,
-        deploymentDto.branch || 'main'
-      );
-      console.log(build);
-      // const namespace = 'random';
-      // const ingressUrl = 'random';
-      // // const { ingressUrl, namespace } =
-      // // await this.kubernetesService.deployApplication();
+      const installation_id: number | undefined =
+        await this.githubService.getInstallationID(user.id);
 
-      // return await this.db
-      //   .from('deployments')
-      //   .update({
-      //     url: ingressUrl,
-      //     status: 'active',
-      //     namespace
-      //   })
-      //   .eq('id', data.id)
-      //   .select();
+      const { data: build, error } = await this.db
+        .from('builds')
+        .insert({
+          status: 'queued',
+          user_id: user.id,
+          repo_name: deploymentDto.project,
+          deployment_id: deployment.id
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      const { data: updatedDeployment } = await this.db
+        .from('deployments')
+        .update({
+          status: 'building',
+          build_id: build.id
+        })
+        .eq('id', deployment.id)
+        .select()
+        .single();
+
+      await this.buildQueue.add('new-build', {
+        build_id: build.id,
+        deployment_id: deployment.id,
+        repo_name: deploymentDto.project,
+        branch: deploymentDto.branch || 'main',
+        installation_id
+      });
+      return updatedDeployment;
     } catch (error) {
       await this.db
         .from('deployments')
         .upsert({
           status: 'failed'
         })
-        .eq('id', data.id)
+        .eq('id', deployment.id)
         .select();
       throw new InternalServerErrorException(`Échec du déploiement : ${error}`);
     }

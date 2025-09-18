@@ -12,35 +12,140 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "13.0.4"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      builds: {
+        Row: {
+          branch: string | null
+          created_at: string
+          deployment_id: string | null
+          id: string
+          image_uri: string | null
+          logs: string | null
+          namespace: string | null
+          repo_name: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          branch?: string | null
+          created_at?: string
+          deployment_id?: string | null
+          id?: string
+          image_uri?: string | null
+          logs?: string | null
+          namespace?: string | null
+          repo_name?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          branch?: string | null
+          created_at?: string
+          deployment_id?: string | null
+          id?: string
+          image_uri?: string | null
+          logs?: string | null
+          namespace?: string | null
+          repo_name?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "builds_deployment_id_fkey"
+            columns: ["deployment_id"]
+            isOneToOne: false
+            referencedRelation: "deployments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deployments: {
         Row: {
+          branch: string
           created_at: string
+          deploy_url: string | null
+          dockerfile_path: string | null
           id: string
-          image_name: string | null
           namespace: string | null
+          project: string
+          project_name: string | null
+          project_url: string | null
           status: string | null
           url: string | null
           user_id: string
         }
         Insert: {
+          branch: string
           created_at?: string
+          deploy_url?: string | null
+          dockerfile_path?: string | null
           id?: string
-          image_name?: string | null
           namespace?: string | null
+          project: string
+          project_name?: string | null
+          project_url?: string | null
           status?: string | null
           url?: string | null
           user_id?: string
         }
         Update: {
+          branch?: string
           created_at?: string
+          deploy_url?: string | null
+          dockerfile_path?: string | null
           id?: string
-          image_name?: string | null
           namespace?: string | null
+          project?: string
+          project_name?: string | null
+          project_url?: string | null
           status?: string | null
           url?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          github_installation_id: number | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          github_installation_id?: number | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          github_installation_id?: number | null
+          id?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -178,6 +283,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

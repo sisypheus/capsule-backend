@@ -53,7 +53,6 @@ export class GithubService {
   async getInstallationID(userId: string): Promise<any> {
     const data = (await this.db.from('profiles').select('*').eq('id', userId))
       .data![0];
-      console.log(data)
     return data!.github_installation_id!;
   }
 

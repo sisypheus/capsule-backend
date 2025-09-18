@@ -3,7 +3,6 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Supabase } from 'src/supabase/supabase.service';
 import { GithubService } from 'src/github/github.service';
-// ... import de Supabase et GithubService
 
 @Injectable()
 export class BuildService {
@@ -15,10 +14,10 @@ export class BuildService {
 
   async createBuildJob(
     userId: string,
+    build_id: string,
     repoFullName: string,
     branch: string
   ): Promise<any> {
-    // 1. Récupérer l'installationId pour cet utilisateur
     const installation_id = await this.githubService.getInstallationID(userId);
 
     // 2. Créer une entrée dans la table 'builds'
@@ -31,7 +30,7 @@ export class BuildService {
 
     // 3. Ajouter la tâche à la file d'attente BullMQ
     await this.buildQueue.add('new-build', {
-      id: build.id,
+      build_id: build_id,
       repo_name: repoFullName,
       branch,
       installation_id
