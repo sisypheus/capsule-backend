@@ -32,7 +32,12 @@ export class GithubController {
   ) {
     const user = req['user'] as User;
 
-    return this.githubService.getRepositoriesForUser(user.id, page, per_page, search);
+    return this.githubService.getRepositoriesForUser(
+      user.id,
+      page,
+      per_page,
+      search
+    );
   }
 
   @Get('install')
@@ -42,7 +47,7 @@ export class GithubController {
 
     const state = this.stateService.generateState(userId);
 
-    const appName = 'capsule-paas';
+    const appName = process.env.GITHUB_APP_NAME;
     const installUrl = `https://github.com/apps/${appName}/installations/new?state=${state}`;
 
     res.redirect(installUrl);

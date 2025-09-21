@@ -1,0 +1,89 @@
+name: CI/CD Pipeline for Backend
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  GIT_OPS_REPO: sisypheus/capsule-infra
+  HELM_VALUES_FILE: charts/backend/values.yaml
+  HELM_APP_NAME: backend
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  update-gitops-repo:
+    name: Update GitOps Repository
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ env.GIT_OPS_REPO }}
+          ssh-key: ${{ secrets.GIT_OPS_SSH_PRIVATE_KEY }}
+      
+      - name: Update Helm values file
+        run: |
+          # Le tag à utiliser est le SHA du commit qui a déclenché le workflow
+          IMAGE_TAG=${{ github.sha }}
+          
+          echo "Updating ${{ env.HELM_VALUES_FILE }} to use image tag: $IMAGE_TAG"
+          
+          # Installer yq
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq
+          
+          # Modifier le fichier values.yaml
+          yq e -i '.${{ env.HELM_APP_NAME }}.image.tag = env(IMAGE_TAG)' ${{ env.HELM_VALUES_FILE }}
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions-bot@github.com"
+          
+          # Vérifier s'il y a des changements à commiter
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          
+          git add ${{ env.HELM_VALUES_FILE }}
+          git commit -m "chore(backend): update image tag to ${{ github.sha }}"
+          git push

@@ -1,4 +1,3 @@
-// src/github-app/github-app.service.ts
 import {
   Injectable,
   InternalServerErrorException,
@@ -80,18 +79,38 @@ export class GithubService {
     const num = profile.github_installation_id;
     const octokit = await this.getInstallationOctokit(num);
 
-    const { data: repos } =
-      await octokit.apps.listReposAccessibleToInstallation({
-        q: search,
+    if (search === '') {
+      const { data: repos } =
+        await octokit.apps.listReposAccessibleToInstallation({
+          per_page: perPage,
+          page
+        });
+
+      return this.transformRepoData(repos.repositories || []);
+    } else {
+      const { data: installation } = await octokit.apps.getInstallation({
+        installation_id: profile.github_installation_id
+      });
+      const owner = installation.account?.name;
+
+      const query = `${search} user:${owner} org:${owner}`;
+
+      const { data: searchResult } = await octokit.search.repos({
+        q: query,
         per_page: perPage,
         page
       });
 
-    return (repos.repositories || []).map((repo) => ({
+      return this.transformRepoData(searchResult.items || []);
+    }
+  }
+
+  private transformRepoData(repos: any[]): any[] {
+    return repos.map((repo: any) => ({
       id: repo.id,
       description: repo.description,
       updated_at: repo.updated_at,
-      icon: repo.owner.avatar_url,
+      icon: repo.owner?.avatar_url,
       name: repo.name,
       fullName: repo.full_name,
       private: repo.private

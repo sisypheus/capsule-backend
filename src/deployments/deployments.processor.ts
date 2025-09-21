@@ -6,7 +6,6 @@ import { Supabase } from 'src/supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { Tables } from 'database.types';
 import { PostgrestError } from '@supabase/supabase-js';
-import { NotFoundError } from 'rxjs';
 
 type BuildWithDeployment = Tables<'builds'> & {
   deployments: Tables<'deployments'> | null; // La relation peut être nulle
