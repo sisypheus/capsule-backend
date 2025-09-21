@@ -7,7 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GIT_OPS_REPO: sisypheus/capsule-backend
+  GIT_OPS_REPO: sisypheus/capsule-infra
   HELM_VALUES_FILE: charts/backend/values.yaml
   HELM_APP_NAME: backend
 
