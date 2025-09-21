@@ -7,7 +7,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GIT_OPS_REPO: sisypheus/capsule-infra
+  GIT_OPS_REPO: sisypheus/capsule-backend
   HELM_VALUES_FILE: charts/backend/values.yaml
   HELM_APP_NAME: backend
 
@@ -62,17 +62,16 @@ jobs:
       
       - name: Update Helm values file
         run: |
-          IMAGE_TAG=${{ github.sha }}
+          # Le tag à utiliser est le SHA du commit qui a déclenché le workflow
+          export IMAGE_TAG=${{ github.sha }}
           
           echo "Updating ${{ env.HELM_VALUES_FILE }} to use image tag: $IMAGE_TAG"
           
           # Installer yq
           sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && sudo chmod +x /usr/bin/yq
           
-          # Utiliser --arg pour passer la variable de manière explicite et sûre
-          yq e -i '.${{ env.HELM_APP_NAME }}.image.tag = strenv(IMAGE_TAG_VAR)' \
-            --arg IMAGE_TAG_VAR "$IMAGE_TAG" \
-            ${{ env.HELM_VALUES_FILE }}
+          # Modifier le fichier values.yaml
+          yq e -i '.${{ env.HELM_APP_NAME }}.image.tag = env(IMAGE_TAG)' ${{ env.HELM_VALUES_FILE }}
 
       - name: Commit and push changes
         run: |
