@@ -64,6 +64,8 @@ jobs:
         run: |
           # Le tag à utiliser est le SHA du commit qui a déclenché le workflow
           export IMAGE_TAG=${{ github.sha }}
+          echo $(ls -la)
+          echo $(pwd)
           
           echo "Updating ${{ env.HELM_VALUES_FILE }} to use image tag: $IMAGE_TAG"
           
