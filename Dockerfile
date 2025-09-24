@@ -20,6 +20,7 @@ COPY package*.json ./
 
 RUN npm ci --omit=dev --no-audit --no-fund --silent
 
+COPY --from=builder /usr/src/app/builder ./builder
 COPY --from=builder /usr/src/app/dist ./dist
 
 USER node

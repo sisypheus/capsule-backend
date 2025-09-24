@@ -31,7 +31,7 @@ export class AuthService {
     const { data, error } = await this.db.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: this.configService.get('GITHUB_CALLBACK', 'test')
+        redirectTo: this.configService.get('GITHUB_CALLBACK')
       }
     });
 
