@@ -117,10 +117,10 @@ export class BuildProcessor extends WorkerHost {
       );
       throw error;
     } finally {
-      this.logger.log(
-        `[${build_id}] Cleaning up namespace ${buildNamespace}...`
-      );
-      await this.k8sCoreApi.deleteNamespace({ name: buildNamespace });
+      // this.logger.log(
+      //   `[${build_id}] Cleaning up namespace ${buildNamespace}...`
+      // );
+      // await this.k8sCoreApi.deleteNamespace({ name: buildNamespace });
     }
   }
 
