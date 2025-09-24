@@ -31,8 +31,10 @@ export class BuildProcessor extends WorkerHost {
     super();
     this.kc = new k8s.KubeConfig();
     if (process.env.KUBERNETES_SERVICE_HOST) {
+      this.logger.log('Loading KubeConfig from cluster...');
       this.kc.loadFromCluster();
     } else {
+      this.logger.log('Loading KubeConfig from default local path...');
       this.kc.loadFromDefault();
     }
     this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);

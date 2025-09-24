@@ -11,8 +11,13 @@ export class KubernetesService {
 
   constructor() {
     this.kc = new k8s.KubeConfig();
-    if (process.env.KUBERNETES_SERVICE_HOST) this.kc.loadFromCluster();
-    else this.kc.loadFromDefault();
+    if (process.env.KUBERNETES_SERVICE_HOST) {
+      this.logger.log('Loading KubeConfig from cluster...');
+      kc.loadFromCluster();
+    } else {
+      this.logger.log('Loading KubeConfig from default local path...');
+      kc.loadFromDefault();
+    }
 
     this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.k8sAppsApi = this.kc.makeApiClient(k8s.AppsV1Api);
