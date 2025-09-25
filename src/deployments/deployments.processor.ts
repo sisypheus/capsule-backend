@@ -8,7 +8,7 @@ import { Tables } from 'database.types';
 import { PostgrestError } from '@supabase/supabase-js';
 
 type BuildWithDeployment = Tables<'builds'> & {
-  deployments: Tables<'deployments'> | null; // La relation peut être nulle
+  deployments: Tables<'deployments'> | null;
 };
 
 @Processor('deploy-queue')
@@ -55,7 +55,7 @@ export class DeploymentsProcessor extends WorkerHost {
 
       const appName = deployment.project.split('/')[1];
       const namespace = `user-${deployment.user_id.substring(0, 8)}`;
-      const url = `http://${appName}-${namespace}.${this.configService.get('BASE_DOMAIN', '127.0.0.1.nip.io')}:${this.configService.get('DEPLOYMENT_PORT', '8081')}`;
+      const url = `http://${appName}-${namespace}.${this.configService.get('BASE_DOMAIN', '127.0.0.1.nip.io:8081')}`;
 
       await this.kubernetesService.applyNamespace(namespace);
 

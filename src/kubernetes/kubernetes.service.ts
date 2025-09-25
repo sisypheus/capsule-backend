@@ -163,9 +163,18 @@ export class KubernetesService {
       kind: 'Ingress',
       metadata: {
         name: appName,
-        annotations: { 'kubernetes.io/ingress.class': 'traefik' }
+        annotations: {
+          'kubernetes.io/ingress.class': 'traefik',
+          'cert-manager.io/cluster-issuer': 'letsencrypt-prod'
+        }
       },
       spec: {
+        tls: [
+          {
+            hosts: [host],
+            secretName: `${appName}-tls`
+          }
+        ],
         rules: [
           {
             host,
