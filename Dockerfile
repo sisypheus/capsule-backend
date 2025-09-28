@@ -19,6 +19,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 RUN npm ci --omit=dev --no-audit --no-fund --silent
+RUN apk add --no-cache git
 
 COPY --from=builder /usr/src/app/builder ./builder
 COPY --from=builder /usr/src/app/dist ./dist
