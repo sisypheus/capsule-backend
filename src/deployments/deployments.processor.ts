@@ -24,9 +24,9 @@ export class DeploymentsProcessor extends WorkerHost {
   }
 
   async process(
-    job: Job<{ build_id: string; image_uri: string }, any, string>
+    job: Job<{ build_id: string; image_uri: string; port: number }, any, string>
   ): Promise<any> {
-    const { build_id, image_uri } = job.data;
+    const { build_id, image_uri, port } = job.data;
     this.logger.log(
       `Starting deployment for build ${build_id} with image ${image_uri}`
     );
@@ -62,10 +62,11 @@ export class DeploymentsProcessor extends WorkerHost {
       await this.kubernetesService.applyDeployment(
         namespace,
         appName,
-        image_uri
+        image_uri,
+        port
       );
 
-      await this.kubernetesService.applyService(namespace, appName);
+      await this.kubernetesService.applyService(namespace, appName, port);
 
       await this.kubernetesService.applyIngress(namespace, appName, url);
 

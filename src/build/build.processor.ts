@@ -15,13 +15,17 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { DEPLOY_QUEUE_NAME } from 'src/queue/queue.module';
 
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execPromise = promisify(exec);
+
 @Processor('build-queue')
 export class BuildProcessor extends WorkerHost {
   private readonly logger = new Logger(BuildProcessor.name);
   private readonly kc: k8s.KubeConfig;
   private readonly k8sCoreApi: k8s.CoreV1Api;
   private readonly k8sBatchApi: k8s.BatchV1Api;
-  private readonly k8sNetworkApi: k8s.NetworkingV1Api;
 
   constructor(
     private readonly db: Supabase,
@@ -39,7 +43,6 @@ export class BuildProcessor extends WorkerHost {
     }
     this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.k8sBatchApi = this.kc.makeApiClient(k8s.BatchV1Api);
-    this.k8sNetworkApi = this.kc.makeApiClient(k8s.NetworkingV1Api);
   }
 
   async process(
@@ -50,15 +53,23 @@ export class BuildProcessor extends WorkerHost {
         branch: string;
         installation_id: number;
         deployment_id: string;
+        port: number;
       },
       any,
       string
     >
   ): Promise<any> {
-    const { build_id, repo_name, branch, installation_id, deployment_id } =
-      job.data;
+    const {
+      build_id,
+      repo_name,
+      branch,
+      installation_id,
+      deployment_id,
+      port
+    } = job.data;
     const buildNamespace = `build-${short.generate()}`.toLowerCase();
     let logs = '';
+    const cloneDir = `/tmp/build-${deployment_id}`;
 
     try {
       await this.updateBuildStatus(build_id, 'building');
@@ -70,6 +81,16 @@ export class BuildProcessor extends WorkerHost {
         .token;
       const cloneUrl = `https://x-access-token:${token}@github.com/${repo_name}.git`;
 
+      await execPromise(
+        `git clone --branch ${branch} --depth 1 https://github.com/${repo_name}.git ${cloneDir}`
+      );
+
+      const { stdout: commitSha } = await execPromise(
+        `git -C ${cloneDir} rev-parse --short HEAD`
+      );
+      const uniqueTag = commitSha.trim();
+
+      const imageUri = `${process.env.REGISTRY_URL}/${process.env.REGISTRY_USER}/${repo_name.split('/')[1]}:${uniqueTag}`;
       const namespacedObject: k8s.V1Namespace = {
         metadata: { name: buildNamespace }
       };
@@ -82,7 +103,8 @@ export class BuildProcessor extends WorkerHost {
         build_id,
         cloneUrl,
         branch,
-        repo_name
+        repo_name,
+        imageUri
       );
       await this.k8sBatchApi.createNamespacedJob({
         body: jobManifest,
@@ -99,7 +121,6 @@ export class BuildProcessor extends WorkerHost {
         throw new Error('Kubernetes Job failed.');
       }
 
-      const imageUri = `${process.env.REGISTRY_URL}/${process.env.REGISTRY_USER}/${repo_name.split('/')[1]}:${branch}`;
       await this.updateBuildStatus(build_id, 'success', imageUri, logs);
       this.logger.log(
         `[${build_id}] Build successful in namespace ${buildNamespace}.`
@@ -107,6 +128,7 @@ export class BuildProcessor extends WorkerHost {
 
       await this.deployQueue.add('new-deployment', {
         build_id,
+        port,
         image_uri: imageUri
       });
     } catch (error) {
@@ -165,7 +187,8 @@ export class BuildProcessor extends WorkerHost {
     buildId: string,
     cloneUrl: string,
     branch: string,
-    repo_full_name: string
+    repo_full_name: string,
+    image_tag: string
   ): k8s.V1Job {
     this.logger.log(`[${buildId}] Creating Job manifest...`);
     this.logger.log(`[${buildId}] Creating Buildah Job manifest...`);
@@ -179,7 +202,7 @@ export class BuildProcessor extends WorkerHost {
     );
     const templateContent = fs.readFileSync(templatePath, 'utf8');
 
-    const targetImage = `${process.env.REGISTRY_URL}/${process.env.REGISTRY_USER}/${repo_full_name.split('/')[1]}:${branch}`;
+    const targetImage = image_tag;
     const builderImage = `${process.env.REGISTRY_URL}/${process.env.REGISTRY_USER}/capsule-builder:latest`;
 
     const finalManifestContent = templateContent

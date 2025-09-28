@@ -15,10 +15,14 @@ spec:
       initContainers:
       - name: git-cloner
         image: alpine/git:latest
+        imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
           - |
             set -e
+            echo "--- Ensuring clean workspace at /workspace ---"
+            rm -rf /workspace/*
+            mkdir -p /workspace
             git clone --branch "{{GIT_BRANCH}}" --single-branch --depth 1 "{{GIT_CLONE_URL}}" /workspace
             
             DOCKERFILE_PATH=$(find /workspace -maxdepth 2 -type f -name "*ockerfile" | head -n 1)
@@ -39,6 +43,7 @@ spec:
       containers:
       - name: buildah-builder
         image: {{BUILDER_IMAGE}}
+        imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
           - |
@@ -47,6 +52,7 @@ spec:
             export BUILDAH_FORMAT=oci
             echo "--- Starting build process ---"
             buildah --root $BUILDAH_ROOT bud \
+              --no-cache \
               --format $BUILDAH_FORMAT \
               --pull \
               -t {{TARGET_IMAGE}} /workspace

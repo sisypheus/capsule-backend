@@ -92,7 +92,12 @@ export class KubernetesService {
     );
   }
 
-  async applyDeployment(namespace: string, appName: string, imageUri: string) {
+  async applyDeployment(
+    namespace: string,
+    appName: string,
+    imageUri: string,
+    port: number
+  ) {
     this.logger.log(`Applying Deployment: ${appName} in ${namespace}`);
     const manifest: k8s.V1Deployment = {
       apiVersion: 'apps/v1',
@@ -105,7 +110,11 @@ export class KubernetesService {
           metadata: { labels: { app: appName } },
           spec: {
             containers: [
-              { name: appName, image: imageUri, ports: [{ containerPort: 80 }] }
+              {
+                name: appName,
+                image: imageUri,
+                ports: [{ containerPort: port }]
+              }
             ]
           }
         }
@@ -129,7 +138,7 @@ export class KubernetesService {
     );
   }
 
-  async applyService(namespace: string, appName: string) {
+  async applyService(namespace: string, appName: string, port: number) {
     this.logger.log(`Applying Service: ${appName} in ${namespace}`);
     const manifest: k8s.V1Service = {
       apiVersion: 'v1',
@@ -137,7 +146,7 @@ export class KubernetesService {
       metadata: { name: appName },
       spec: {
         selector: { app: appName },
-        ports: [{ port: 80, targetPort: 80 }],
+        ports: [{ port: 80, targetPort: port }],
         type: 'ClusterIP'
       }
     };
@@ -214,7 +223,7 @@ export class KubernetesService {
     namespace: string,
     appName: string,
     timeout = 300000 // 5 minutes
-  ): Promise<any> {
+  ): Promise<void> {
     this.logger.log(
       `Waiting for deployment ${appName} in namespace ${namespace} to be ready...`
     );
@@ -225,8 +234,11 @@ export class KubernetesService {
       const interval = setInterval(async () => {
         if (Date.now() - startTime > timeout) {
           clearInterval(interval);
+          const podEvents = await this.getLatestPodEvents(namespace, appName);
           reject(
-            new Error(`Timeout waiting for deployment rollout for ${appName}.`)
+            new Error(
+              `Timeout waiting for deployment rollout for ${appName}. Last pod events:\n${podEvents}`
+            )
           );
           return;
         }
@@ -236,32 +248,74 @@ export class KubernetesService {
             name: appName,
             namespace
           });
+
+          const spec = deployment.spec;
           const status = deployment.status;
 
-          if (
-            status &&
-            status.updatedReplicas === deployment.spec?.replicas &&
-            status.replicas === status.updatedReplicas &&
-            status.availableReplicas === status.replicas
-          ) {
-            clearInterval(interval);
-            this.logger.log(`Deployment ${appName} is ready.`);
-            resolve('');
+          if (status && spec && status.availableReplicas === spec.replicas) {
+            if (
+              status.updatedReplicas === spec.replicas &&
+              status.replicas === spec.replicas
+            ) {
+              clearInterval(interval);
+              this.logger.log(`Deployment ${appName} is ready.`);
+              resolve();
+            } else {
+              this.logger.log(
+                `[${appName}] Waiting for rollout... Ready: ${status.availableReplicas || 0}, Updated: ${status.updatedReplicas || 0}, Total: ${status.replicas || 0}`
+              );
+            }
           } else {
             this.logger.log(
-              `[${appName}] Waiting... Replicas: ${status?.availableReplicas || 0}/${deployment.spec?.replicas}`
+              `[${appName}] Waiting... Replicas available: ${status?.availableReplicas || 0}/${spec?.replicas || 'N/A'}`
             );
           }
         } catch (error: any) {
           clearInterval(interval);
           this.logger.error(
             `Error while waiting for deployment ${appName}:`,
-            error.body || error
+            error.body?.message || error.message
           );
           reject(new Error(error));
         }
       }, 5000);
     });
+  }
+
+  private async getLatestPodEvents(
+    namespace: string,
+    appName: string
+  ): Promise<string> {
+    try {
+      const labelSelector = `app=${appName}`;
+      const podList = await this.k8sCoreApi.listNamespacedPod({
+        labelSelector,
+        namespace
+      });
+      if (podList.items.length === 0) {
+        return 'No pods found for this deployment.';
+      }
+      const latestPod = podList.items.sort(
+        (a, b) =>
+          new Date(b.metadata?.creationTimestamp || '').getTime() -
+          new Date(a.metadata?.creationTimestamp || '').getTime()
+      )[0];
+      const podName = latestPod.metadata?.name;
+
+      const eventList = await this.k8sCoreApi.listNamespacedEvent({
+        namespace,
+        labelSelector: `involvedObject.name=${podName}`
+      });
+      if (eventList.items.length === 0) {
+        return `No events found for the latest pod ${podName}. Pod status: ${latestPod.status?.phase}`;
+      }
+      return eventList.items
+        .map((e) => `- ${e.type} (${e.reason}): ${e.message}`)
+        .join('\n');
+    } catch (e) {
+      console.log(e);
+      return 'Could not retrieve pod events.';
+    }
   }
 
   async cleanupNamespace(namespace: string) {

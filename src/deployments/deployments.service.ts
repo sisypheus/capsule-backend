@@ -7,7 +7,6 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import { PostgrestError, User } from '@supabase/supabase-js';
-import { KubernetesService } from 'src/kubernetes/kubernetes.service';
 import { Supabase } from 'src/supabase/supabase.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -18,7 +17,6 @@ import { BUILD_QUEUE_NAME } from 'src/queue/queue.module';
 export class DeploymentsService {
   constructor(
     private readonly db: Supabase,
-    private readonly kubernetesService: KubernetesService,
     @InjectQueue(BUILD_QUEUE_NAME) private readonly buildQueue: Queue,
     private readonly githubService: GithubService
   ) {}
@@ -51,7 +49,8 @@ export class DeploymentsService {
           branch: deploymentDto.branch,
           project: deploymentDto.project,
           project_name: deploymentDto.project_name,
-          dockerfile_path: deploymentDto.dockerfile_path
+          dockerfile_path: deploymentDto.dockerfile_path,
+          port: deploymentDto.port
         })
         .select()
         .single();
@@ -91,6 +90,7 @@ export class DeploymentsService {
         deployment_id: deployment.id,
         repo_name: deploymentDto.project,
         branch: deploymentDto.branch || 'main',
+        port: deploymentDto.port || 80,
         installation_id
       });
       return updatedDeployment;

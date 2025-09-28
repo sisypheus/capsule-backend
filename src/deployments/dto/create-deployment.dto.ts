@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
 
 export class CreateDeploymentDto {
   @IsString()
@@ -8,6 +8,9 @@ export class CreateDeploymentDto {
   @IsString()
   @IsNotEmpty()
   project_name: string;
+
+  @IsNumber()
+  port: number;
 
   @IsString()
   branch?: string;
