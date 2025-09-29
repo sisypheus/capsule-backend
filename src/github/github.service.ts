@@ -76,32 +76,35 @@ export class GithubService {
       );
     }
 
-    const num = profile.github_installation_id;
-    const octokit = await this.getInstallationOctokit(num);
+    const installation_id = profile.github_installation_id;
+    const octokit = await this.getInstallationOctokit(installation_id);
 
-    if (search === '') {
-      const { data: repos } =
-        await octokit.apps.listReposAccessibleToInstallation({
-          per_page: perPage,
-          page
-        });
+    try {
+      const allRepos = await octokit.paginate(
+        octokit.apps.listReposAccessibleToInstallation,
+        { per_page: 100 }
+      );
 
-      return this.transformRepoData(repos.repositories || []);
-    } else {
-      const { data: installation } = await octokit.apps.getInstallation({
-        installation_id: profile.github_installation_id
-      });
-      const owner = installation.account?.name;
+      console.log(search);
+      const filteredRepos = search
+        ? allRepos.filter((repo) =>
+            repo.full_name.toLowerCase().includes(search.toLowerCase())
+          )
+        : allRepos;
+      console.log(filteredRepos);
 
-      const query = `${search} user:${owner} org:${owner}`;
+      const start = (page - 1) * perPage;
+      const end = start + perPage;
 
-      const { data: searchResult } = await octokit.search.repos({
-        q: query,
-        per_page: perPage,
-        page
-      });
+      const paginatedRepos = filteredRepos.slice(start, end);
 
-      return this.transformRepoData(searchResult.items || []);
+      return {
+        total_count: filteredRepos.length,
+        items: this.transformRepoData(paginatedRepos)
+      };
+    } catch (error) {
+      console.log(error);
+      throw new InternalServerErrorException();
     }
   }
 

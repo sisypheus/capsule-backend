@@ -113,15 +113,19 @@ export class DeploymentsService {
     const from = (page - 1) * perPage;
     const to = from + perPage - 1;
 
-    const { data, error } = await this.db
+    const {
+      data: deployments,
+      error,
+      count
+    } = await this.db
       .from('deployments')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .range(from, to);
 
     if (error) throw error;
 
-    return data;
+    return { deployments, count };
   }
 }

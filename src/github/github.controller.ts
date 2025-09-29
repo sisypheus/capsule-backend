@@ -26,17 +26,27 @@ export class GithubController {
   @Get('/repos')
   findAll(
     @Req() req: Request,
-    @Query('search') search: string,
-    @Query('page') page: number,
-    @Query('per_page') per_page: number
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('per_page') per_page?: string
   ) {
     const user = req['user'] as User;
 
+    let sanitizedSearch = search;
+
+    if (
+      !sanitizedSearch ||
+      sanitizedSearch.trim() === '' ||
+      sanitizedSearch.trim() === '?'
+    ) {
+      sanitizedSearch = '';
+    }
+
     return this.githubService.getRepositoriesForUser(
       user.id,
-      page,
-      per_page,
-      search
+      parseInt(page || '', 10) || 1,
+      parseInt(per_page || '', 10) || 10,
+      sanitizedSearch
     );
   }
 
