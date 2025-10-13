@@ -85,13 +85,11 @@ export class GithubService {
         { per_page: 100 }
       );
 
-      console.log(search);
       const filteredRepos = search
         ? allRepos.filter((repo) =>
             repo.full_name.toLowerCase().includes(search.toLowerCase())
           )
         : allRepos;
-      console.log(filteredRepos);
 
       const start = (page - 1) * perPage;
       const end = start + perPage;

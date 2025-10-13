@@ -1,14 +1,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SupabaseClient } from '@supabase/supabase-js';
+// import { SupabaseClient } from '@supabase/supabase-js';
 import { Supabase } from 'src/supabase/supabase.service';
 import type { Response, Request } from 'express';
 import { CryptoService } from 'src/crypto/crypto.service';
 
 @Injectable()
 export class AuthService {
-  private supabase: SupabaseClient;
-
   constructor(
     private readonly configService: ConfigService,
     private readonly db: Supabase,
@@ -101,5 +99,23 @@ export class AuthService {
       .single();
 
     res.redirect(`${frontendUrl}/dashboard`);
+  }
+
+  async logout(res: Response) {
+    await this.db.auth.signOut();
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')!;
+    res.cookie('access_token', null, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'lax',
+      path: '/'
+    });
+    res.cookie('refresh_token', null, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: 'lax',
+      path: '/'
+    });
+    res.redirect(frontendUrl);
   }
 }

@@ -23,4 +23,9 @@ export class AuthController {
   async githubCallback(@Query('code') code: string, @Res() res: Response) {
     return this.authService.githubCallback(code, res);
   }
+
+  @Get('logout')
+  async logout(@Res() res: Response) {
+    return this.authService.logout(res);
+  }
 }
