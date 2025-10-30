@@ -14,6 +14,7 @@ import { StateModule } from './state/state.module';
 import { BullModule } from '@nestjs/bullmq';
 import { BuildModule } from './build/build.module';
 import { QueueModule } from './queue/queue.module';
+import { LogsModule } from './logs/logs.module';
 
 @Module({
   imports: [
@@ -35,7 +36,8 @@ import { QueueModule } from './queue/queue.module';
     GithubModule,
     StateModule,
     BuildModule,
-    QueueModule
+    QueueModule,
+    LogsModule
   ],
   controllers: [AppController],
   providers: [AppService]

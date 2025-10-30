@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as k8s from '@kubernetes/client-node';
+import { LogsGateway } from 'src/logs/logs.gateway';
+import * as stream from 'stream';
 
 @Injectable()
 export class KubernetesService {
@@ -8,6 +10,7 @@ export class KubernetesService {
   private readonly k8sAppsApi: k8s.AppsV1Api;
   private readonly k8sNetworkingApi: k8s.NetworkingV1Api;
   private readonly logger = new Logger(KubernetesService.name);
+  private readonly logsGateway: LogsGateway;
 
   constructor() {
     this.kc = new k8s.KubeConfig();
@@ -316,6 +319,58 @@ export class KubernetesService {
       console.log(e);
       return 'Could not retrieve pod events.';
     }
+  }
+
+  async waitForPodReady(namespace: string, podName: string, timeoutMs = 60000) {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      const pod = await this.k8sCoreApi.readNamespacedPod({
+        name: podName,
+        namespace
+      });
+      const phase = pod.status?.phase;
+
+      if (phase === 'Running' || phase === 'Succeeded') {
+        return pod;
+      }
+
+      if (phase === 'Failed') {
+        console.warn('Pod failed, attempting to retrieve logs anyway');
+        return pod;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    throw new Error(`Pod ${podName} did not start within ${timeoutMs}ms`);
+  }
+
+  async watchJobAndStreamLogs(
+    namespace: string,
+    jobName: string,
+    container: string
+  ): Promise<any> {
+    this.logger.log(`[${jobName}] Starting to watch job and stream logs...`);
+    console.log((await this.k8sCoreApi.listNamespacedPod({ namespace })).items);
+    await this.waitForPodReady(namespace, jobName);
+
+    const k8log = new k8s.Log(this.kc);
+    const logStream = new stream.PassThrough();
+    logStream.on('data', (chunk) => {
+      const data = chunk.toString('utf8');
+
+      console.log(data);
+    });
+
+    k8log.log(namespace, jobName, container, logStream, {
+      follow: true,
+      tailLines: 50,
+      pretty: false,
+      timestamps: false
+    });
+
+    return await Promise.resolve({ succeeded: true });
   }
 
   async cleanupNamespace(namespace: string) {

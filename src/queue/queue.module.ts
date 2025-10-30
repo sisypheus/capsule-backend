@@ -6,7 +6,6 @@ export const DEPLOY_QUEUE_NAME = 'deploy-queue';
 
 @Module({
   imports: [
-    // Enregistrer TOUTES les queues ici
     BullModule.registerQueue(
       { name: BUILD_QUEUE_NAME },
       { name: DEPLOY_QUEUE_NAME }

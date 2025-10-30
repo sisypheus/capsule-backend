@@ -13,14 +13,16 @@ import * as short from 'short-uuid';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { DEPLOY_QUEUE_NAME } from 'src/queue/queue.module';
+import { BUILD_QUEUE_NAME, DEPLOY_QUEUE_NAME } from 'src/queue/queue.module';
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { LogsGateway } from 'src/logs/logs.gateway';
+import { KubernetesService } from 'src/kubernetes/kubernetes.service';
 
 const execPromise = promisify(exec);
 
-@Processor('build-queue')
+@Processor(BUILD_QUEUE_NAME)
 export class BuildProcessor extends WorkerHost {
   private readonly logger = new Logger(BuildProcessor.name);
   private readonly kc: k8s.KubeConfig;
@@ -28,6 +30,8 @@ export class BuildProcessor extends WorkerHost {
   private readonly k8sBatchApi: k8s.BatchV1Api;
 
   constructor(
+    private readonly kubernetesService: KubernetesService,
+    private readonly logsGateway: LogsGateway,
     private readonly db: Supabase,
     private readonly githubAppService: GithubService,
     @InjectQueue(DEPLOY_QUEUE_NAME) private readonly deployQueue: Queue
@@ -68,7 +72,6 @@ export class BuildProcessor extends WorkerHost {
       port
     } = job.data;
     const buildNamespace = `build-${short.generate()}`.toLowerCase();
-    let logs = '';
     const cloneDir = `/tmp/build-${deployment_id}`;
 
     try {
@@ -106,22 +109,24 @@ export class BuildProcessor extends WorkerHost {
         repo_name,
         imageUri
       );
+
       await this.k8sBatchApi.createNamespacedJob({
         body: jobManifest,
         namespace: buildNamespace
       });
 
-      const jobResult = await this.monitorJob(
+      const pod = await this.getJobPods(
         buildNamespace,
         `build-job-${build_id}`
       );
-      logs = jobResult.logs;
 
-      if (!jobResult.succeeded) {
-        throw new Error('Kubernetes Job failed.');
-      }
+      await this.kubernetesService.watchJobAndStreamLogs(
+        buildNamespace,
+        pod.metadata?.name ?? '',
+        pod.spec?.containers[0].name ?? ''
+      );
 
-      await this.updateBuildStatus(build_id, 'success', imageUri, logs);
+      await this.updateBuildStatus(build_id, 'success', imageUri);
       this.logger.log(
         `[${build_id}] Build successful in namespace ${buildNamespace}.`
       );
@@ -132,19 +137,19 @@ export class BuildProcessor extends WorkerHost {
         image_uri: imageUri
       });
     } catch (error) {
-      this.logger.error(`[${build_id}] Build failed:`, error.message);
+      this.logger.error(`[${build_id}] Build failed:`, error);
       await this.updateBuildStatus(
         build_id,
         'failed',
         undefined,
-        logs || error.message
+        error.message
       );
       throw error;
     } finally {
-      // this.logger.log(
-      //   `[${build_id}] Cleaning up namespace ${buildNamespace}...`
-      // );
-      // await this.k8sCoreApi.deleteNamespace({ name: buildNamespace });
+      this.logger.log(
+        `[${build_id}] Cleaning up namespace ${buildNamespace}...`
+      );
+      await this.k8sCoreApi.deleteNamespace({ name: buildNamespace });
     }
   }
 
@@ -220,6 +225,17 @@ export class BuildProcessor extends WorkerHost {
       `[${buildId}] Buildah Job manifest created for target image: ${targetImage}`
     );
     return jobManifest;
+  }
+
+  private async getJobPods(namespace, jobName) {
+    const k8sApi = this.kc.makeApiClient(k8s.CoreV1Api);
+
+    const res = await k8sApi.listNamespacedPod({
+      namespace,
+      labelSelector: `job-name=${jobName}`
+    });
+
+    return res.items[0];
   }
 
   private async monitorJob(
