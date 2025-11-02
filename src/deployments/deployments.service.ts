@@ -75,7 +75,7 @@ export class DeploymentsService {
         .single();
       if (error) throw error;
 
-      const { data: updatedDeployment } = await this.db
+      await this.db
         .from('deployments')
         .update({
           status: 'building',
@@ -93,7 +93,7 @@ export class DeploymentsService {
         port: deploymentDto.port || 80,
         installation_id
       });
-      return updatedDeployment;
+      return deployment;
     } catch (error) {
       await this.db
         .from('deployments')

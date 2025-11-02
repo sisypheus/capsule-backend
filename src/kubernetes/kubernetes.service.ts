@@ -10,9 +10,8 @@ export class KubernetesService {
   private readonly k8sAppsApi: k8s.AppsV1Api;
   private readonly k8sNetworkingApi: k8s.NetworkingV1Api;
   private readonly logger = new Logger(KubernetesService.name);
-  private readonly logsGateway: LogsGateway;
 
-  constructor() {
+  constructor(private readonly logsGateway: LogsGateway) {
     this.kc = new k8s.KubeConfig();
     if (process.env.KUBERNETES_SERVICE_HOST) {
       this.logger.log('Loading KubeConfig from cluster...');
@@ -349,28 +348,40 @@ export class KubernetesService {
   async watchJobAndStreamLogs(
     namespace: string,
     jobName: string,
-    container: string
-  ): Promise<any> {
-    this.logger.log(`[${jobName}] Starting to watch job and stream logs...`);
-    console.log((await this.k8sCoreApi.listNamespacedPod({ namespace })).items);
-    await this.waitForPodReady(namespace, jobName);
+    container: string,
+    deployment_id: string
+  ): Promise<void> {
+    try {
+      console.log(this.logsGateway);
+      this.logger.log(`[${jobName}] Starting to watch job and stream logs...`);
+      await this.waitForPodReady(namespace, jobName);
 
-    const k8log = new k8s.Log(this.kc);
-    const logStream = new stream.PassThrough();
-    logStream.on('data', (chunk) => {
-      const data = chunk.toString('utf8');
+      const k8log = new k8s.Log(this.kc);
+      const logStream = new stream.PassThrough();
 
-      console.log(data);
-    });
+      logStream.on('data', (chunk) => {
+        const data = chunk.toString('utf8');
+        this.logsGateway.sendLog(deployment_id, data);
+      });
 
-    k8log.log(namespace, jobName, container, logStream, {
-      follow: true,
-      tailLines: 50,
-      pretty: false,
-      timestamps: false
-    });
+      logStream.on('error', (error) => {
+        this.logger.error(`Log stream error for ${jobName}:`, error);
+      });
 
-    return await Promise.resolve({ succeeded: true });
+      k8log
+        .log(namespace, jobName, container, logStream, {
+          follow: true,
+          tailLines: 50,
+          pretty: false,
+          timestamps: false
+        })
+        .catch((error) => {
+          this.logger.error(`Log stream error:`, error);
+        });
+    } catch (error) {
+      this.logger.error(`Failed to watch job ${jobName}:`, error);
+      throw error;
+    }
   }
 
   async cleanupNamespace(namespace: string) {

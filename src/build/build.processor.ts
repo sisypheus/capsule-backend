@@ -115,6 +115,7 @@ export class BuildProcessor extends WorkerHost {
         namespace: buildNamespace
       });
 
+      // await this.kubernetesService.waitForPodReady(namespace, jobName);
       const pod = await this.getJobPods(
         buildNamespace,
         `build-job-${build_id}`
@@ -123,7 +124,8 @@ export class BuildProcessor extends WorkerHost {
       await this.kubernetesService.watchJobAndStreamLogs(
         buildNamespace,
         pod.metadata?.name ?? '',
-        pod.spec?.containers[0].name ?? ''
+        pod.spec?.containers[0].name ?? '',
+        deployment_id
       );
 
       await this.updateBuildStatus(build_id, 'success', imageUri);
@@ -228,6 +230,7 @@ export class BuildProcessor extends WorkerHost {
   }
 
   private async getJobPods(namespace, jobName) {
+    // TODO: put it in k8 service
     const k8sApi = this.kc.makeApiClient(k8s.CoreV1Api);
 
     const res = await k8sApi.listNamespacedPod({
