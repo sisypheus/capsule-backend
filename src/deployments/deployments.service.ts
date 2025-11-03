@@ -19,7 +19,7 @@ export class DeploymentsService {
     private readonly db: Supabase,
     @InjectQueue(BUILD_QUEUE_NAME) private readonly buildQueue: Queue,
     private readonly githubService: GithubService
-  ) {}
+  ) { }
 
   async create(user: User, deploymentDto: CreateDeploymentDto): Promise<any> {
     const { count, error: countError } = await this.db
@@ -104,6 +104,18 @@ export class DeploymentsService {
         .select();
       throw new InternalServerErrorException(`Échec du déploiement : ${error}`);
     }
+  }
+
+  async getDeployment(user: User, id: string) {
+    const { data: deployment, error } = await this.db
+      .from('deployments')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+
+    return deployment;
   }
 
   async findForUser(user: User, page = 1, perPage = 10): Promise<any> {

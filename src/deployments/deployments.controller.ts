@@ -6,7 +6,8 @@ import {
   UseGuards,
   Req,
   ValidationPipe,
-  Query
+  Query,
+  Param
 } from '@nestjs/common';
 import { AuthGuard } from 'src/auth/auth.guard';
 import type { Request } from 'express';
@@ -18,7 +19,7 @@ import { Throttle } from '@nestjs/throttler';
 @UseGuards(AuthGuard)
 @Controller('deployments')
 export class DeploymentsController {
-  constructor(private readonly deploymentsService: DeploymentsService) {}
+  constructor(private readonly deploymentsService: DeploymentsService) { }
 
   @Get()
   findAll(
@@ -28,6 +29,13 @@ export class DeploymentsController {
   ) {
     const user = req['user'] as User;
     return this.deploymentsService.findForUser(user, page, perPage);
+  }
+
+  @Get('/:id')
+  find(@Req() req: Request, @Param('id') id: string) {
+    const user = req['user'] as User;
+    console.log('here');
+    return this.deploymentsService.getDeployment(user, id);
   }
 
   @Throttle({
