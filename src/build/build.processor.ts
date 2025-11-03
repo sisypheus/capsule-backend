@@ -25,9 +25,6 @@ const execPromise = promisify(exec);
 @Processor(BUILD_QUEUE_NAME)
 export class BuildProcessor extends WorkerHost {
   private readonly logger = new Logger(BuildProcessor.name);
-  private readonly kc: k8s.KubeConfig;
-  private readonly k8sCoreApi: k8s.CoreV1Api;
-  private readonly k8sBatchApi: k8s.BatchV1Api;
 
   constructor(
     private readonly kubernetesService: KubernetesService,
@@ -37,16 +34,6 @@ export class BuildProcessor extends WorkerHost {
     @InjectQueue(DEPLOY_QUEUE_NAME) private readonly deployQueue: Queue
   ) {
     super();
-    this.kc = new k8s.KubeConfig();
-    if (process.env.KUBERNETES_SERVICE_HOST) {
-      this.logger.log('Loading KubeConfig from cluster...');
-      this.kc.loadFromCluster();
-    } else {
-      this.logger.log('Loading KubeConfig from default local path...');
-      this.kc.loadFromDefault();
-    }
-    this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);
-    this.k8sBatchApi = this.kc.makeApiClient(k8s.BatchV1Api);
   }
 
   async process(
@@ -97,10 +84,10 @@ export class BuildProcessor extends WorkerHost {
       const namespacedObject: k8s.V1Namespace = {
         metadata: { name: buildNamespace }
       };
-      await this.k8sCoreApi.createNamespace({
+      await this.kubernetesService.createNamespace({
         body: namespacedObject
       });
-      await this.createRegistrySecret(buildNamespace);
+      await this.kubernetesService.createRegistrySecret(buildNamespace);
 
       const jobManifest = this.createJobManifest(
         build_id,
@@ -110,21 +97,33 @@ export class BuildProcessor extends WorkerHost {
         imageUri
       );
 
-      await this.k8sBatchApi.createNamespacedJob({
-        body: jobManifest,
+      await this.kubernetesService.createNamespacedJob({
+        jobManifest,
         namespace: buildNamespace
       });
 
-      // await this.kubernetesService.waitForPodReady(namespace, jobName);
-      const pod = await this.getJobPods(
+      const pod = await this.kubernetesService.waitForJobPod(
         buildNamespace,
         `build-job-${build_id}`
       );
+      if (!pod.metadata?.name) {
+        throw new Error(`Pod not found build-job-${build_id}`);
+      }
 
-      await this.kubernetesService.watchJobAndStreamLogs(
+      await this.kubernetesService.waitForPodReady(
         buildNamespace,
-        pod.metadata?.name ?? '',
-        pod.spec?.containers[0].name ?? '',
+        pod.metadata?.name
+      );
+
+      const containerName = pod.spec?.containers?.[0]?.name;
+      if (!containerName) {
+        throw new Error(`No container found in pod ${pod.metadata.name}`);
+      }
+
+      this.kubernetesService.watchJobAndStreamLogs(
+        buildNamespace,
+        pod.metadata.name,
+        containerName,
         deployment_id
       );
 
@@ -151,7 +150,7 @@ export class BuildProcessor extends WorkerHost {
       this.logger.log(
         `[${build_id}] Cleaning up namespace ${buildNamespace}...`
       );
-      await this.k8sCoreApi.deleteNamespace({ name: buildNamespace });
+      await this.kubernetesService.cleanupNamespace(buildNamespace);
     }
   }
 
@@ -164,30 +163,6 @@ export class BuildProcessor extends WorkerHost {
       .from('deployments')
       .update({ status, ...details })
       .eq('id', id);
-  }
-
-  private async createRegistrySecret(namespace: string) {
-    const authString = Buffer.from(
-      `${process.env.REGISTRY_USER}:${process.env.REGISTRY_PASSWORD}`
-    ).toString('base64');
-    const dockerConfig = {
-      auths: { [process.env.REGISTRY_URL as string]: { auth: authString } }
-    };
-    const dockerConfigJson = Buffer.from(JSON.stringify(dockerConfig)).toString(
-      'base64'
-    );
-
-    const secret: k8s.V1Secret = {
-      apiVersion: 'v1',
-      kind: 'Secret',
-      metadata: { name: 'registry-secret' },
-      type: 'kubernetes.io/dockerconfigjson',
-      data: { '.dockerconfigjson': dockerConfigJson }
-    };
-    await this.k8sCoreApi.createNamespacedSecret({
-      namespace: namespace,
-      body: secret
-    });
   }
 
   private createJobManifest(
@@ -227,114 +202,6 @@ export class BuildProcessor extends WorkerHost {
       `[${buildId}] Buildah Job manifest created for target image: ${targetImage}`
     );
     return jobManifest;
-  }
-
-  private async getJobPods(namespace, jobName) {
-    // TODO: put it in k8 service
-    const k8sApi = this.kc.makeApiClient(k8s.CoreV1Api);
-
-    const res = await k8sApi.listNamespacedPod({
-      namespace,
-      labelSelector: `job-name=${jobName}`
-    });
-
-    return res.items[0];
-  }
-
-  private async monitorJob(
-    namespace: string,
-    jobName: string
-  ): Promise<{ succeeded: boolean; logs: string }> {
-    return new Promise((resolve, reject) => {
-      this.logger.log(
-        `[${jobName}] Starting to monitor job in namespace ${namespace}...`
-      );
-
-      const timeout = setTimeout(() => {
-        clearInterval(checkInterval);
-        reject(
-          new Error(
-            `Timeout: Job ${jobName} did not complete within 10 minutes.`
-          )
-        );
-      }, 600000);
-
-      const checkInterval = setInterval(async () => {
-        try {
-          const job = await this.k8sBatchApi.readNamespacedJobStatus({
-            name: jobName,
-            namespace
-          });
-
-          if (job.status?.succeeded) {
-            this.logger.log(`[${jobName}] Job succeeded.`);
-            clearInterval(checkInterval);
-            clearTimeout(timeout);
-            const podLogs = await this.getPodLogsForJob(namespace, jobName);
-            resolve({ succeeded: true, logs: podLogs });
-            return;
-          }
-
-          if (job.status?.failed) {
-            this.logger.error(`[${jobName}] Job failed.`);
-            clearInterval(checkInterval);
-            clearTimeout(timeout);
-            const podLogs = await this.getPodLogsForJob(namespace, jobName);
-            resolve({ succeeded: false, logs: `Job failed.\n\n${podLogs}` });
-            return;
-          }
-
-          this.logger.log(`[${jobName}] Job is still running...`);
-        } catch (error) {
-          if (error.statusCode === 404) {
-            this.logger.warn(
-              `[${jobName}] Job not found yet, retrying... (this is normal)`
-            );
-            return;
-          }
-
-          clearInterval(checkInterval);
-          clearTimeout(timeout);
-          this.logger.error(
-            `[${jobName}] Unrecoverable error while monitoring job:`,
-            error.body?.message || error.message
-          );
-          reject(new Error(error));
-        }
-      }, 5000);
-    });
-  }
-
-  private async getPodLogsForJob(
-    namespace: string,
-    jobName: string
-  ): Promise<string> {
-    try {
-      const labelSelector = `job-name=${jobName}`;
-      const podList = await this.k8sCoreApi.listNamespacedPod({
-        namespace,
-        labelSelector: labelSelector
-      });
-
-      if (podList.items.length === 0) {
-        return 'Could not find pod for the job to retrieve logs.';
-      }
-
-      const podName = podList.items[0].metadata?.name ?? 'buildkit-builder';
-
-      const logs = await this.k8sCoreApi.readNamespacedPodLog({
-        name: podName,
-        namespace: namespace
-      });
-
-      return logs;
-    } catch (error) {
-      this.logger.error(
-        `[${jobName}] Failed to retrieve pod logs:`,
-        error.body?.message || error
-      );
-      return 'Failed to retrieve logs from the build pod.';
-    }
   }
 
   private async updateBuildStatus(

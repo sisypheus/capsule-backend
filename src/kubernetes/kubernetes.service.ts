@@ -6,10 +6,11 @@ import * as stream from 'stream';
 @Injectable()
 export class KubernetesService {
   private readonly kc: k8s.KubeConfig;
+  private readonly logger = new Logger(KubernetesService.name);
+  private readonly k8BatchApi: k8s.BatchV1Api;
   private readonly k8sCoreApi: k8s.CoreV1Api;
   private readonly k8sAppsApi: k8s.AppsV1Api;
   private readonly k8sNetworkingApi: k8s.NetworkingV1Api;
-  private readonly logger = new Logger(KubernetesService.name);
 
   constructor(private readonly logsGateway: LogsGateway) {
     this.kc = new k8s.KubeConfig();
@@ -24,6 +25,7 @@ export class KubernetesService {
     this.k8sCoreApi = this.kc.makeApiClient(k8s.CoreV1Api);
     this.k8sAppsApi = this.kc.makeApiClient(k8s.AppsV1Api);
     this.k8sNetworkingApi = this.kc.makeApiClient(k8s.NetworkingV1Api);
+    this.k8BatchApi = this.kc.makeApiClient(k8s.BatchV1Api);
   }
 
   private async applyResource<T extends k8s.KubernetesObject>(
@@ -221,10 +223,45 @@ export class KubernetesService {
     );
   }
 
+  async createRegistrySecret(namespace: string) {
+    const authString = Buffer.from(
+      `${process.env.REGISTRY_USER}:${process.env.REGISTRY_PASSWORD}`
+    ).toString('base64');
+    const dockerConfig = {
+      auths: { [process.env.REGISTRY_URL as string]: { auth: authString } }
+    };
+    const dockerConfigJson = Buffer.from(JSON.stringify(dockerConfig)).toString(
+      'base64'
+    );
+
+    const secret: k8s.V1Secret = {
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: 'registry-secret' },
+      type: 'kubernetes.io/dockerconfigjson',
+      data: { '.dockerconfigjson': dockerConfigJson }
+    };
+    await this.k8sCoreApi.createNamespacedSecret({
+      namespace: namespace,
+      body: secret
+    });
+  }
+
+  async createNamespace(namespacedObject) {
+    return this.k8sCoreApi.createNamespace(namespacedObject);
+  }
+
+  async createNamespacedJob({ jobManifest, namespace }) {
+    return this.k8BatchApi.createNamespacedJob({
+      body: jobManifest,
+      namespace
+    });
+  }
+
   async waitForDeployment(
     namespace: string,
     appName: string,
-    timeout = 300000 // 5 minutes
+    timeout = 300000
   ): Promise<void> {
     this.logger.log(
       `Waiting for deployment ${appName} in namespace ${namespace} to be ready...`
@@ -320,6 +357,32 @@ export class KubernetesService {
     }
   }
 
+  async waitForJobPod(namespace: string, jobName: string, timeoutMs = 120000) {
+    const startTime = Date.now();
+    const pollInterval = 2000;
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const res = await this.k8sCoreApi.listNamespacedPod({
+          namespace,
+          labelSelector: `job-name=${jobName}`
+        });
+
+        if (res.items && res.items.length > 0) return res.items[0];
+
+        this.logger.debug(`Waiting for pod creation for job ${jobName}...`);
+      } catch (error) {
+        this.logger.warn(`Error listing pods for job ${jobName}:`, error);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error(
+      `Pod for job ${jobName} was not created within ${timeoutMs}ms`
+    );
+  }
+
   async waitForPodReady(namespace: string, podName: string, timeoutMs = 60000) {
     const startTime = Date.now();
 
@@ -330,12 +393,17 @@ export class KubernetesService {
       });
       const phase = pod.status?.phase;
 
-      if (phase === 'Running' || phase === 'Succeeded') {
+      if (phase === 'Running') {
         return pod;
       }
-
       if (phase === 'Failed') {
         console.warn('Pod failed, attempting to retrieve logs anyway');
+        return pod;
+      }
+      if (phase === 'Succeeded') {
+        console.warn(
+          'Pod already succeeded, attempting to retrieve logs anyway'
+        );
         return pod;
       }
 
@@ -345,16 +413,14 @@ export class KubernetesService {
     throw new Error(`Pod ${podName} did not start within ${timeoutMs}ms`);
   }
 
-  async watchJobAndStreamLogs(
+  watchJobAndStreamLogs(
     namespace: string,
     jobName: string,
     container: string,
     deployment_id: string
-  ): Promise<void> {
+  ): void {
     try {
-      console.log(this.logsGateway);
       this.logger.log(`[${jobName}] Starting to watch job and stream logs...`);
-      await this.waitForPodReady(namespace, jobName);
 
       const k8log = new k8s.Log(this.kc);
       const logStream = new stream.PassThrough();
@@ -373,7 +439,7 @@ export class KubernetesService {
           follow: true,
           tailLines: 50,
           pretty: false,
-          timestamps: false
+          timestamps: true
         })
         .catch((error) => {
           this.logger.error(`Log stream error:`, error);

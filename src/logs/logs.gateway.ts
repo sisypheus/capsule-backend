@@ -8,7 +8,6 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import { Supabase } from 'src/supabase/supabase.service';
 
 @WebSocketGateway({
   cors: {
@@ -22,7 +21,7 @@ export class LogsGateway
   @WebSocketServer() server: Server;
   private logger: Logger = new Logger('LogsGateway');
 
-  constructor(private readonly db: Supabase) {}
+  constructor() {}
 
   afterInit(server: Server) {
     this.logger.log('WebSocket Gateway Initialized');
@@ -37,7 +36,7 @@ export class LogsGateway
   }
 
   @SubscribeMessage('joinDeploymentRoom')
-  async handleJoinRoom(client: Socket, deploymentId: string) {
+  handleJoinRoom(client: Socket, deploymentId: string) {
     // TODO: Vérifier que l'utilisateur authentifié a bien le droit de voir ce déploiement.
     this.logger.log(
       `Client ${client.id} joining room for deployment ${deploymentId}`
