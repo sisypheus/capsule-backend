@@ -34,7 +34,6 @@ export class DeploymentsController {
   @Get('/:id')
   find(@Req() req: Request, @Param('id') id: string) {
     const user = req['user'] as User;
-    console.log('here');
     return this.deploymentsService.getDeployment(user, id);
   }
 

@@ -111,7 +111,8 @@ export class DeploymentsService {
       .from('deployments')
       .select('*')
       .eq('id', id)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .single();
 
     if (error) throw error;
 

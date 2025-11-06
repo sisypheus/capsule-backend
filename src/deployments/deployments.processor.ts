@@ -6,6 +6,7 @@ import { Supabase } from 'src/supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { Tables } from 'database.types';
 import { PostgrestError } from '@supabase/supabase-js';
+import { LogsGateway } from 'src/logs/logs.gateway';
 
 type BuildWithDeployment = Tables<'builds'> & {
   deployments: Tables<'deployments'> | null;
@@ -18,7 +19,8 @@ export class DeploymentsProcessor extends WorkerHost {
   constructor(
     private readonly db: Supabase,
     private readonly kubernetesService: KubernetesService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly logsGateway: LogsGateway
   ) {
     super();
   }
@@ -76,6 +78,7 @@ export class DeploymentsProcessor extends WorkerHost {
       this.logger.log(
         `Deployment successful for build ${build_id}. Application is live at ${url}`
       );
+      this.logsGateway.sendDeploymentDone(deployment.id, url);
     } catch (error) {
       this.logger.error(`Deployment failed for build ${build_id}:`, error);
       if (deployment)

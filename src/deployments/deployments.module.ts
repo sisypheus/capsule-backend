@@ -9,6 +9,7 @@ import { GithubModule } from 'src/github/github.module';
 import { QueueModule } from 'src/queue/queue.module';
 import { DeploymentsProcessor } from './deployments.processor';
 import { ConfigModule } from '@nestjs/config';
+import { LogsModule } from 'src/logs/logs.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ConfigModule } from '@nestjs/config';
     AuthModule,
     BuildModule,
     GithubModule,
+    LogsModule,
     QueueModule,
     ConfigModule
   ],

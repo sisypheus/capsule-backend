@@ -16,12 +16,11 @@ import { Server, Socket } from 'socket.io';
   }
 })
 export class LogsGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-{
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private logger: Logger = new Logger('LogsGateway');
 
-  constructor() {}
+  constructor() { }
 
   afterInit(server: Server) {
     this.logger.log('WebSocket Gateway Initialized');
@@ -37,7 +36,6 @@ export class LogsGateway
 
   @SubscribeMessage('joinDeploymentRoom')
   handleJoinRoom(client: Socket, deploymentId: string) {
-    // TODO: Vérifier que l'utilisateur authentifié a bien le droit de voir ce déploiement.
     this.logger.log(
       `Client ${client.id} joining room for deployment ${deploymentId}`
     );
@@ -50,5 +48,9 @@ export class LogsGateway
 
   sendLog(deploymentId: string, message: string) {
     this.server.to(deploymentId).emit('logMessage', message);
+  }
+
+  sendDeploymentDone(deploymendId: string, url: string) {
+    this.server.to(deploymendId).emit('deploymentDone', url);
   }
 }
