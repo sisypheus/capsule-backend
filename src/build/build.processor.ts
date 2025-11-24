@@ -34,6 +34,7 @@ export class BuildProcessor extends WorkerHost {
     @InjectQueue(DEPLOY_QUEUE_NAME) private readonly deployQueue: Queue
   ) {
     super();
+    this.deployQueue.drain();
   }
 
   async process(

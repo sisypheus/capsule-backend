@@ -113,11 +113,29 @@ export class KubernetesService {
         template: {
           metadata: { labels: { app: appName } },
           spec: {
+            automountServiceAccountToken: false,
+            securityContext: {
+              runAsNonRoot: true,
+            },
             containers: [
               {
                 name: appName,
                 image: imageUri,
-                ports: [{ containerPort: port }]
+                ports: [{ containerPort: port }],
+                securityContext: {
+                  allowPrivilegeEscalation: false,
+                  readOnlyRootFilesystem: true,
+                },
+                resources: {
+                  limits: {
+                    memory: '256Mi',
+                    cpu: '200m'
+                  },
+                  requests: {
+                    memory: '128Mi',
+                    cpu: '100m'
+                  }
+                }
               }
             ]
           }

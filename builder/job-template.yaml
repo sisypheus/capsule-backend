@@ -11,9 +11,17 @@ spec:
         runAsUser: 1001
         runAsGroup: 1001
         fsGroup: 1001 
+      automountServiceAccountToken: false
       
       initContainers:
       - name: git-cloner
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - ALL
         image: alpine/git:latest
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]

@@ -19,7 +19,9 @@ export class DeploymentsService {
     private readonly db: Supabase,
     @InjectQueue(BUILD_QUEUE_NAME) private readonly buildQueue: Queue,
     private readonly githubService: GithubService
-  ) { }
+  ) {
+    this.buildQueue.drain();
+  }
 
   async create(user: User, deploymentDto: CreateDeploymentDto): Promise<any> {
     const { count, error: countError } = await this.db
